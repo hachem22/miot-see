@@ -13,8 +13,8 @@
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION WIFI
 // ═══════════════════════════════════════════════════════════════
-const char* WIFI_SSID = "OPPO A17";
-const char* WIFI_PASSWORD = "12345678";
+const char* WIFI_SSID = "A53";
+const char* WIFI_PASSWORD = "14364585177147";
 
 // ═══════════════════════════════════════════════════════════════
 // PINS CAMERA AI-THINKER

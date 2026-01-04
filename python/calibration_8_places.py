@@ -19,7 +19,7 @@ img_copy = None
 def mouse_callback(event, x, y, flags, param):
     global drawing, start_point, img_copy, current_place, zones, img
     
-    if current_place > 8:
+    if current_place >8:
         return
     
     if event == cv2.EVENT_LBUTTONDOWN:
@@ -43,7 +43,7 @@ def mouse_callback(event, x, y, flags, param):
                        (start_point[0]+10, start_point[1]+30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
             
-            cv2.imshow("Calibration 8 Places", img_copy)
+            cv2.imshow("Calibration 28 Places", img_copy)
     
     elif event == cv2.EVENT_LBUTTONUP:
         if drawing:
@@ -73,14 +73,14 @@ def mouse_callback(event, x, y, flags, param):
                 cv2.putText(img_copy, nom, (zx+10, zy+30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
-            cv2.imshow("Calibration 8 Places", img_copy)
+            cv2.imshow("Calibration 28 Places", img_copy)
             
             current_place += 1
             
             if current_place <= 8:
                 print(f"\n📍 Dessinez P{current_place}")
             else:
-                print("\n✅ 8 PLACES DÉFINIES !")
+                print("\n✅ 28 PLACES DÉFINIES !")
                 print("Appuyez sur une touche pour sauvegarder...")
 
 def capturer_image():
@@ -102,7 +102,7 @@ def main():
     global img, img_copy
     
     print("\n" + "="*70)
-    print("  🎯 CALIBRATION 8 PLACES")
+    print("  🎯 CALIBRATION 28 PLACES")
     print("="*70)
     
     # Capture
@@ -123,14 +123,14 @@ def main():
     print(f"\n📍 Dessinez P1")
     
     # Créer fenêtre
-    cv2.namedWindow("Calibration 8 Places")
-    cv2.setMouseCallback("Calibration 8 Places", mouse_callback)
+    cv2.namedWindow("Calibration 28 Places")
+    cv2.setMouseCallback("Calibration 28 Places", mouse_callback)
     
     # Instructions sur image
     info_img = img.copy()
     cv2.putText(info_img, "Cliquez et glissez pour P1", 
                (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-    cv2.imshow("Calibration 8 Places", info_img)
+    cv2.imshow("Calibration 28 Places", info_img)
     
     print("\n⏳ Fenêtre ouverte ! Si vous ne la voyez pas, cherchez-la dans la barre des tâches.")
     

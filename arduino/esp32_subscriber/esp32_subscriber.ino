@@ -1,7 +1,7 @@
 /**
  * ═══════════════════════════════════════════════════════════════
  * ESP32 SUBSCRIBER - LCD + SERVO + LEDS
- * Affichage automatique + Barrière
+ * Contrôle barrière via MQTT HiveMQ
  * ═══════════════════════════════════════════════════════════════
  */
 
@@ -12,16 +12,19 @@
 #include <ESP32Servo.h>
 
 // ═══════════════════════════════════════════════════════════════
-// WIFI
+// WIFI ET MQTT
 // ═══════════════════════════════════════════════════════════════
 
-const char* WIFI_SSID = "OPPO A17";
-const char* WIFI_PASSWORD = "12345678";
-const char* MQTT_SERVER = "192.168.131.244";  // ← IP de votre PC
+const char* WIFI_SSID = "A53";
+const char* WIFI_PASSWORD = "14364585177147";
+
+const char* MQTT_SERVER = "broker.hivemq.com";
 const int MQTT_PORT = 1883;
 
-const char* TOPIC_STATUS = "parking/status";
-const char* TOPIC_BARRIER = "parking/barrier/command";
+// Topics avec préfixe unique
+const String UNIQUE_ID = "hachem_smartparking_2026";
+const String TOPIC_STATUS = UNIQUE_ID + "/parking/status";
+const String TOPIC_BARRIER = UNIQUE_ID + "/parking/barrier/command";
 
 // ═══════════════════════════════════════════════════════════════
 // PINS
@@ -36,22 +39,30 @@ const int LCD_ADDRESS = 0x27;
 const int LCD_COLS = 16;
 const int LCD_ROWS = 2;
 
+// ═══════════════════════════════════════════════════════════════
+// OBJETS
+// ═══════════════════════════════════════════════════════════════
+
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
 Servo barriere;
 
+// ═══════════════════════════════════════════════════════════════
+// VARIABLES
+// ═══════════════════════════════════════════════════════════════
+
 int placesDisponibles = 0;
 int placesTotal = 8;
-boolean barrierOuverte = false;
+boolean barriereOuverte = false;
 
 // ═══════════════════════════════════════════════════════════════
-// WIFI
+// SETUP WIFI
 // ═══════════════════════════════════════════════════════════════
 
 void setup_wifi() {
   Serial.println("\n╔════════════════════════════════════════╗");
-  Serial.println("║  ESP32 SUBSCRIBER AUTO - 8 PLACES      ║");
+  Serial.println("║  ESP32 SUBSCRIBER - HIVEMQ             ║");
   Serial.println("╚════════════════════════════════════════╝");
   Serial.print("WiFi: ");
   Serial.println(WIFI_SSID);
@@ -80,13 +91,12 @@ void setup_wifi() {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("WiFi OK");
-    lcd.setCursor(0, 1);
-    lcd.print(WiFi.localIP());
-    delay(2000);
+    delay(1500);
   } else {
     Serial.println("\n✗ WiFi ECHEC");
     lcd.clear();
     lcd.print("WiFi ECHEC");
+    digitalWrite(LED_RED, HIGH);
   }
 }
 
@@ -112,7 +122,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  if (strcmp(topic, TOPIC_STATUS) == 0) {
+  // ============ STATUS PARKING ============
+  if (String(topic) == TOPIC_STATUS) {
     int available = doc["available"] | 0;
     int total = doc["total"] | 8;
     
@@ -128,61 +139,71 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     updateLEDs();
   }
   
-  else if (strcmp(topic, TOPIC_BARRIER) == 0) {
+  // ============ COMMANDE BARRIÈRE ============
+  else if (String(topic) == TOPIC_BARRIER) {
     const char* action = doc["action"];
+    const char* method = doc["method"] | "AUTO";
+    const char* user = doc["user"] | "Utilisateur";
+    const char* reason = doc["reason"] | "";
     const char* message_text = doc["message"] | "BARRIERE";
     
-    Serial.print("   Barrière: ");
+    Serial.print("   Action: ");
     Serial.println(action);
+    Serial.print("   Méthode: ");
+    Serial.println(method);
+    Serial.print("   Utilisateur: ");
+    Serial.println(user);
     
     if (strcmp(action, "open") == 0) {
-      Serial.println("   🟢 OUVERTURE AUTO");
-      ouvrirBarriere(message_text);
+      Serial.println("   🟢 OUVERTURE BARRIÈRE");
+      ouvrirBarriere(method, user);
       
     } else if (strcmp(action, "stay_closed") == 0) {
-      Serial.println("   🔴 RESTE FERMÉE");
+      Serial.print("   🔴 ACCÈS REFUSÉ: ");
+      Serial.println(reason);
       
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("PARKING COMPLET");
-      lcd.setCursor(0, 1);
-      lcd.print("0/");
-      lcd.print(placesTotal);
-      
-      for(int i=0; i<3; i++) {
-        digitalWrite(LED_RED, HIGH);
-        delay(200);
-        digitalWrite(LED_RED, LOW);
-        delay(200);
-      }
-      digitalWrite(LED_RED, HIGH);
-      
-      delay(2000);
-      updateDisplay();
+      afficherRefus(reason);
     }
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// RECONNEXION MQTT
+// ═══════════════════════════════════════════════════════════════
+
 void reconnect_mqtt() {
   while (!mqtt.connected()) {
-    Serial.print("MQTT... ");
+    Serial.print("MQTT HiveMQ... ");
     lcd.clear();
     lcd.print("MQTT...");
     
-    String clientId = "ESP32Sub-";
-    clientId += String(random(0xffff), HEX);
+    String clientId = "ESP32Sub-" + UNIQUE_ID;
     
     if (mqtt.connect(clientId.c_str())) {
       Serial.println("✓");
-      mqtt.subscribe(TOPIC_STATUS);
-      mqtt.subscribe(TOPIC_BARRIER);
+      
+      // S'abonner
+      mqtt.subscribe(TOPIC_STATUS.c_str());
+      mqtt.subscribe(TOPIC_BARRIER.c_str());
+      
+      Serial.println("  Abonné à:");
+      Serial.print("    - ");
+      Serial.println(TOPIC_STATUS);
+      Serial.print("    - ");
+      Serial.println(TOPIC_BARRIER);
+      
       lcd.clear();
       lcd.print("MQTT OK");
       delay(1000);
+      
+      digitalWrite(LED_GREEN, HIGH);
     } else {
       Serial.print("✗ rc=");
       Serial.println(mqtt.state());
+      digitalWrite(LED_RED, HIGH);
       delay(5000);
+      digitalWrite(LED_RED, LOW);
+      
       if (WiFi.status() != WL_CONNECTED) {
         setup_wifi();
       }
@@ -190,8 +211,13 @@ void reconnect_mqtt() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// AFFICHAGE LCD
+// ═══════════════════════════════════════════════════════════════
+
 void updateDisplay() {
   lcd.clear();
+  
   if (placesDisponibles > 0) {
     lcd.setCursor(0, 0);
     lcd.print("PARKING 8 PL");
@@ -200,12 +226,20 @@ void updateDisplay() {
     lcd.print(placesDisponibles);
     lcd.print("/");
     lcd.print(placesTotal);
-  } else {
+  } 
+  else {
+    // ════════════════════════════════════════════════════════
+    // PARKING COMPLET - AFFICHAGE CLAIR
+    // ════════════════════════════════════════════════════════
     lcd.setCursor(0, 0);
-    lcd.print("PARKING COMPLET");
+    lcd.print("*** COMPLET ***");
     lcd.setCursor(0, 1);
     lcd.print("0/");
     lcd.print(placesTotal);
+    lcd.print(" places");
+    
+    // Faire clignoter LED rouge
+    digitalWrite(LED_RED, HIGH);
   }
 }
 
@@ -221,38 +255,53 @@ void updateLEDs() {
   }
 }
 
-void ouvrirBarriere(const char* message_text) {
+// ═══════════════════════════════════════════════════════════════
+// CONTRÔLE BARRIÈRE
+// ═══════════════════════════════════════════════════════════════
+
+void ouvrirBarriere(const char* method, const char* user) {
   Serial.println("\n╔════════════════════════════════════╗");
   Serial.println("║   🟢 OUVERTURE BARRIÈRE            ║");
   Serial.println("╚════════════════════════════════════╝");
+  Serial.print("   Méthode: ");
+  Serial.println(method);
+  Serial.print("   Utilisateur: ");
+  Serial.println(user);
   
+  // LEDs
   digitalWrite(LED_GREEN, LOW);
   digitalWrite(LED_YELLOW, HIGH);
   digitalWrite(LED_RED, LOW);
   
+  // LCD - Ligne 1
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("BARRIERE");
-  lcd.setCursor(0, 1);
-  lcd.print("OUVERTE !");
+  if (strcmp(method, "RFID") == 0) {
+    lcd.print("RFID OK");
+  } else if (strcmp(method, "QR") == 0) {
+    lcd.print("QR OK - PAYE");
+  } else {
+    lcd.print("BIENVENUE");
+  }
   
+  // LCD - Ligne 2
+  lcd.setCursor(0, 1);
+  String userName = String(user);
+  if (userName.length() > 16) {
+    userName = userName.substring(0, 16);
+  }
+  lcd.print(userName);
+  
+  // Servo ouverture
   Serial.println("   Servo: 0° → 90°");
   for (int pos = 0; pos <= 90; pos += 3) {
     barriere.write(pos);
     delay(20);
   }
   
-  barrierOuverte = true;
-  Serial.println("✓ Ouverte");
-  Serial.println("⏳ 5s...");
-  
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("BIENVENUE !");
-  lcd.setCursor(0, 1);
-  lcd.print(placesDisponibles);
-  lcd.print(" place");
-  if (placesDisponibles > 1) lcd.print("s");
+  barriereOuverte = true;
+  Serial.println("✓ Barrière ouverte");
+  Serial.println("⏳ Attente 5s...");
   
   delay(5000);
   fermerBarriere();
@@ -267,20 +316,59 @@ void fermerBarriere() {
   lcd.setCursor(0, 0);
   lcd.print("FERMETURE...");
   
+  // Servo fermeture
   Serial.println("   Servo: 90° → 0°");
   for (int pos = 90; pos >= 0; pos -= 3) {
     barriere.write(pos);
     delay(20);
   }
   
-  barrierOuverte = false;
-  Serial.println("✓ Fermée\n");
+  barriereOuverte = false;
+  Serial.println("✓ Barrière fermée\n");
   
   digitalWrite(LED_YELLOW, LOW);
   delay(1000);
   updateDisplay();
   updateLEDs();
 }
+
+void afficherRefus(const char* raison) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  
+  if (strcmp(raison, "PARKING COMPLET") == 0) {
+    lcd.print("PARKING COMPLET");
+    lcd.setCursor(0, 1);
+    lcd.print("0/");
+    lcd.print(placesTotal);
+    lcd.print(" places");
+  } else if (strcmp(raison, "PAIEMENT REQUIS") == 0) {
+    lcd.print("ACCES REFUSE");
+    lcd.setCursor(0, 1);
+    lcd.print("PAIEMENT REQUIS");
+  } else {
+    lcd.print("ACCES REFUSE");
+    lcd.setCursor(0, 1);
+    lcd.print(raison);
+  }
+  
+  // LED rouge clignote
+  for(int i=0; i<3; i++) {
+    digitalWrite(LED_RED, HIGH);
+    delay(200);
+    digitalWrite(LED_RED, LOW);
+    delay(200);
+  }
+  digitalWrite(LED_RED, HIGH);
+  
+  delay(3000);
+  updateDisplay();
+  updateLEDs();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SETUP
+// ═══════════════════════════════════════════════════════════════
 
 void setup() {
   Serial.begin(115200);
@@ -294,24 +382,30 @@ void setup() {
   digitalWrite(LED_YELLOW, LOW);
   digitalWrite(LED_RED, HIGH);
 
+  // Servo
   barriere.attach(SERVO_PIN);
   barriere.write(0);
-  Serial.println("✓ Servo");
+  Serial.println("✓ Servo initialisé");
 
+  // LCD
   lcd.init();
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("SMART PARKING");
   lcd.setCursor(0, 1);
-  lcd.print("AUTO 8 Places");
-  Serial.println("✓ LCD");
+  lcd.print("RFID + QR + CAM");
+  Serial.println("✓ LCD initialisé");
   delay(2000);
 
   setup_wifi();
+  
   mqtt.setServer(MQTT_SERVER, MQTT_PORT);
   mqtt.setCallback(mqtt_callback);
   mqtt.setBufferSize(512);
+  mqtt.setKeepAlive(60);
+  mqtt.setSocketTimeout(30);
+  
   randomSeed(micros());
   
   Serial.println("\n✓ Init OK\n");
@@ -319,8 +413,12 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print("EN ATTENTE...");
   lcd.setCursor(0, 1);
-  lcd.print("MQTT");
+  lcd.print("MQTT...");
 }
+
+// ═══════════════════════════════════════════════════════════════
+// LOOP
+// ═══════════════════════════════════════════════════════════════
 
 void loop() {
   if (!mqtt.connected()) {
