@@ -6,7 +6,7 @@ import sys
 import os
 
 # Configuration
-ESP32_CAM_IP = "192.168.131.20"
+ESP32_CAM_IP = "192.168.7.20"
 ESP32_CAM_PORT = 81
 
 zones = {}

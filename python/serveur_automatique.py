@@ -43,7 +43,7 @@ def get_local_ip():
 
 MQTT_BROKER = get_local_ip()  # Auto-détecte IP locale
 MQTT_PORT = 1883
-ESP32_CAM_IP = "192.168.131.20"
+ESP32_CAM_IP = "192.168.7.20"
 ESP32_CAM_PORT = 81
 WEB_PORT = 8888
 
